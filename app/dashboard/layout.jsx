@@ -8,6 +8,7 @@ const NAV = [
   { href: '/dashboard',           label: 'Dashboard',         icon: '⊞',  roles: ['admin','pi_creator','md','ceo'] },
   { href: '/dashboard/pi',        label: 'Proforma Invoices', icon: '📄', roles: ['admin','pi_creator','md','ceo'] },
   { href: '/dashboard/products',  label: 'Products',          icon: '📦', roles: ['admin','pi_creator'] },
+  { href: '/dashboard/hardware',  label: 'Hardware',          icon: '🔧', roles: ['admin','pi_creator'] },
   { href: '/dashboard/customers', label: 'Customers',         icon: '👥', roles: ['admin','pi_creator'] },
   { href: '/dashboard/pending',    label: 'Pending Approvals', icon: '⏳', roles: ['md','ceo','admin'] },
   { href: '/dashboard/dispatch',   label: 'Dispatch Queue',    icon: '🚚', roles: ['dispatch_manager','admin'] },
