@@ -11,7 +11,7 @@ export default function DispatchPage() {
   const [form, setForm] = useState({
     transport_company: '', vehicle_number: '', driver_name: '',
     driver_phone: '', lr_number: '', freight_amount: '',
-    dispatch_note: '',
+    dispatch_note: '', expected_dispatch_date: '',
   });
   const [dispatchPhoto, setDispatchPhoto] = useState(null);
   const [transportCopy, setTransportCopy] = useState(null);
@@ -36,7 +36,7 @@ export default function DispatchPage() {
       dispatch_mode: 'transport',
       transport_company: '', vehicle_number: '', driver_name: '',
       driver_phone: '', lr_number: '', freight_amount: '',
-      dispatch_note: '',
+      dispatch_note: '', expected_dispatch_date: '',
     });
     setDispatchPhoto(null);
     setTransportCopy(null);
@@ -188,6 +188,12 @@ export default function DispatchPage() {
                         <p className="text-gray-500">Dispatched At</p>
                         <p className="font-semibold text-gray-900">{pi.dispatched_at ? new Date(pi.dispatched_at).toLocaleDateString('en-IN') : '-'}</p>
                       </div>
+                      {pi.expected_dispatch_date && (
+                        <div>
+                          <p className="text-gray-500">Expected Delivery</p>
+                          <p className="font-semibold text-blue-700">{new Date(pi.expected_dispatch_date).toLocaleDateString('en-IN')}</p>
+                        </div>
+                      )}
                       {pi.dispatch_note && (
                         <div className="col-span-2">
                           <p className="text-gray-500">Note</p>
@@ -350,6 +356,12 @@ export default function DispatchPage() {
                     <div>
                       <p className="text-xs text-gray-500">Freight Amount</p>
                       <p className="font-semibold text-gray-900">Rs.{parseFloat(viewModal.freight_amount).toLocaleString('en-IN',{minimumFractionDigits:2})}</p>
+                    </div>
+                  )}
+                  {viewModal.expected_dispatch_date && (
+                    <div>
+                      <p className="text-xs text-gray-500">Expected Delivery Date</p>
+                      <p className="font-semibold text-blue-700">{new Date(viewModal.expected_dispatch_date).toLocaleDateString('en-IN')}</p>
                     </div>
                   )}
                   {viewModal.dispatch_note && (
@@ -528,6 +540,15 @@ export default function DispatchPage() {
                   rows={2}
                   placeholder="Koi special instruction ya note..."
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Expected Dispatch Date */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">📅 Expected Delivery Date</label>
+                <input type="date" value={form.expected_dispatch_date}
+                  onChange={e => setForm({...form, expected_dispatch_date: e.target.value})}
+                  className="w-full border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
