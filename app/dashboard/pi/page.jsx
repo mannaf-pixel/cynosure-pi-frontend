@@ -12,8 +12,9 @@ const STATUS_COLORS = {
   ceo_pending:       'bg-purple-100 text-purple-700',
   ceo_approved:      'bg-green-100 text-green-700',
   payment_pending:   'bg-orange-100 text-orange-700',
-  payment_confirmed: 'bg-teal-100 text-teal-700',
-  dispatched:        'bg-blue-100 text-blue-800',
+  payment_confirmed:    'bg-teal-100 text-teal-700',
+  delivery_scheduled:   'bg-purple-100 text-purple-700',
+  dispatched:           'bg-blue-100 text-blue-800',
   rejected:          'bg-red-100 text-red-700',
 };
 
@@ -25,8 +26,9 @@ const STATUS_LABELS = {
   ceo_pending:       'CEO Approval Pending',
   ceo_approved:      'CEO Approved',
   payment_pending:   'Payment Pending',
-  payment_confirmed: 'Payment Confirmed',
-  dispatched:        'Dispatched ✅',
+  payment_confirmed:   'Payment Confirmed',
+  delivery_scheduled:  'Delivery Scheduled 📅',
+  dispatched:          'Dispatched ✅',
   rejected:          'Rejected',
 };
 

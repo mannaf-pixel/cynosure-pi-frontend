@@ -19,6 +19,10 @@ export default function DispatchPage() {
   const [error, setError] = useState('');
   const [viewModal, setViewModal] = useState(null);
 
+  const [scheduleModal, setScheduleModal] = useState(null);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+
   useEffect(() => { fetchPIs(); }, [filter]);
 
   async function fetchPIs() {
@@ -28,6 +32,18 @@ export default function DispatchPage() {
       setPis(res.data.data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  }
+
+  async function handleScheduleDelivery() {
+    if (!scheduleDate) { alert('Date select karo.'); return; }
+    setScheduleSaving(true);
+    try {
+      await api.post(`/pi/${scheduleModal.id}/schedule-delivery`, { expected_dispatch_date: scheduleDate });
+      setScheduleModal(null);
+      setScheduleDate('');
+      fetchPIs();
+    } catch (e) { alert(e.response?.data?.message || 'Error'); }
+    finally { setScheduleSaving(false); }
   }
 
   function openDispatchModal(pi) {
@@ -89,9 +105,10 @@ export default function DispatchPage() {
       {/* Filter Tabs */}
       <div className="flex gap-2 mb-6 flex-wrap">
         {[
-          { key: 'payment_confirmed', label: '💰 Ready to Dispatch', color: 'teal' },
-          { key: 'dispatched',        label: '✅ Dispatched',         color: 'blue' },
-          { key: 'ceo_approved',      label: '⏳ Payment Pending',    color: 'orange' },
+          { key: 'payment_confirmed',  label: '💰 Payment Confirmed',  color: 'teal' },
+          { key: 'delivery_scheduled', label: '📅 Delivery Scheduled', color: 'purple' },
+          { key: 'dispatched',         label: '✅ Dispatched',          color: 'blue' },
+          { key: 'ceo_approved',       label: '⏳ Payment Pending',     color: 'orange' },
         ].map(tab => (
           <button key={tab.key} onClick={() => setFilter(tab.key)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -123,9 +140,10 @@ export default function DispatchPage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <span className="font-mono font-bold text-blue-700 text-base">{pi.pi_number}</span>
-                    {pi.status === 'payment_confirmed' && <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium">✅ Ready to Dispatch</span>}
-                    {pi.status === 'dispatched'        && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">🚚 Dispatched</span>}
-                    {pi.status === 'ceo_approved'      && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">⏳ Payment Pending</span>}
+                    {pi.status === 'payment_confirmed'  && <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium">💰 Payment Confirmed</span>}
+                    {pi.status === 'delivery_scheduled' && <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">📅 Delivery Scheduled</span>}
+                    {pi.status === 'dispatched'         && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">🚚 Dispatched</span>}
+                    {pi.status === 'ceo_approved'       && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">⏳ Payment Pending</span>}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                     <div>
@@ -230,6 +248,19 @@ export default function DispatchPage() {
               {/* Action Button */}
               {pi.status === 'payment_confirmed' && (
                 <div className="px-5 pb-5">
+                  <button onClick={() => { setScheduleModal(pi); setScheduleDate(''); }}
+                    className="w-full py-2.5 text-sm text-white bg-purple-600 hover:bg-purple-700 rounded-lg font-medium transition-colors">
+                    📅 Schedule Delivery Date
+                  </button>
+                </div>
+              )}
+              {pi.status === 'delivery_scheduled' && (
+                <div className="px-5 pb-5 space-y-2">
+                  {pi.expected_dispatch_date && (
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg px-4 py-2 text-sm text-purple-700 text-center font-medium">
+                      📅 Delivery Date: {new Date(pi.expected_dispatch_date).toLocaleDateString('en-IN')}
+                    </div>
+                  )}
                   <button onClick={() => openDispatchModal(pi)}
                     className="w-full py-2.5 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors">
                     🚚 Dispatch Karo — Fill Details
@@ -396,6 +427,45 @@ export default function DispatchPage() {
               <button onClick={() => setViewModal(null)}
                 className="px-5 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100">
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Schedule Delivery Modal */}
+      {scheduleModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-2xl">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">📅 Schedule Delivery</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{scheduleModal.pi_number} — {scheduleModal.customer?.company_name}</p>
+              </div>
+              <button onClick={() => setScheduleModal(null)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Expected Delivery Date *</label>
+                <input type="date" value={scheduleDate}
+                  onChange={e => setScheduleDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs text-purple-700">
+                <p>📌 Date set hone ke baad PI <strong>Delivery Scheduled</strong> status mein aayegi.</p>
+                <p className="mt-1">🚚 Actual dispatch baad mein karein jab maal ready ho.</p>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex gap-3 justify-end bg-gray-50 rounded-b-2xl">
+              <button onClick={() => setScheduleModal(null)}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100">
+                Cancel
+              </button>
+              <button onClick={handleScheduleDelivery} disabled={scheduleSaving}
+                className="px-6 py-2 text-sm bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-semibold rounded-lg">
+                {scheduleSaving ? 'Saving...' : '📅 Schedule Delivery'}
               </button>
             </div>
           </div>
