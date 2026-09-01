@@ -48,6 +48,7 @@ export default function PIPage() {
     transport_charge: '0', insurance_charge: '0',
     discount_pct: '0', remarks: '',
     salesperson_name: '',
+    color_name: '',
     actual_amount: '', payment_mode: '', received_in: '', payment_note: '',
   };
 
@@ -113,6 +114,7 @@ export default function PIPage() {
       payment_mode:     pi.payment_mode || '',
       received_in:      pi.received_in || '',
       payment_note:     pi.payment_note || '',
+      color_name:       pi.color_name || '',
     });
     try {
       const res = await api.get(`/pi/${pi.id}`);
@@ -486,6 +488,16 @@ export default function PIPage() {
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+                {!isPlastrong && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Color Name <span className="text-gray-400">(e.g. Charcoal, Rosewood)</span></label>
+                    <input type="text" value={form.color_name || ''}
+                      onChange={e => setForm({...form, color_name: e.target.value})}
+                      placeholder="Color ka naam likhein..."
+                      className="w-full border border-orange-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* uPVC Profiles Section */}
