@@ -44,10 +44,9 @@ export default function PIPage() {
   const defaultBrand = company?.slug || 'cynosure';
 
   const EMPTY_FORM = {
-    customer_id: '', profile_type: 'white', brand: defaultBrand,
+    customer_id: '', brand: defaultBrand,
     transport_charge: '0', insurance_charge: '0',
     discount_pct: '0', remarks: '',
-    salesperson_id: '',
     salesperson_name: '',
     actual_amount: '', payment_mode: '', received_in: '', payment_note: '',
   };
@@ -62,7 +61,7 @@ export default function PIPage() {
 
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
-  const [salespersons, setSalespersons] = useState([]);
+  const [hardwareList, setHardwareList] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [items, setItems] = useState([]);
   const [error, setError] = useState('');
@@ -80,10 +79,14 @@ export default function PIPage() {
   }
 
   async function loadFormData() {
-    const [cRes, pRes, uRes] = await Promise.all([api.get('/customers'), api.get('/products'), api.get('/users')]);
+    const [cRes, pRes, hRes] = await Promise.all([
+      api.get('/customers'),
+      api.get('/products'),
+      api.get('/hardware'),
+    ]);
     setCustomers(cRes.data.data);
     setProducts(pRes.data.data.filter(p => p.is_active));
-    setSalespersons(uRes.data.data || []);
+    setHardwareList(hRes.data.data || []);
   }
 
   async function openCreate() {
@@ -100,13 +103,12 @@ export default function PIPage() {
     setEditingPI(pi);
     setForm({
       customer_id:      pi.customer_id,
-      profile_type:     pi.profile_type,
       brand:            pi.brand || defaultBrand,
       transport_charge: pi.transport_charge,
       insurance_charge: pi.insurance_charge,
       discount_pct:     pi.discount_pct || '0',
       remarks:          pi.remarks || '',
-      salesperson_id:   pi.salesperson_id || '',
+      salesperson_name: pi.salesperson_name || '',
       actual_amount:    pi.actual_amount || '',
       payment_mode:     pi.payment_mode || '',
       received_in:      pi.received_in || '',
@@ -117,6 +119,7 @@ export default function PIPage() {
       const fullPI = res.data.data;
       if (isPlastrong) {
         setItems(fullPI.items.map(item => ({
+          item_type:    'profile',
           product_id:   item.product_id,
           total_pieces: item.total_pieces,
           total_weight: item.total_weight,
@@ -124,8 +127,13 @@ export default function PIPage() {
         })));
       } else {
         setItems(fullPI.items.map(item => ({
+          item_type:          item.item_type || 'profile',
+          profile_type:       item.profile_type_snap || 'white',
           product_id:         item.product_id,
+          hardware_product_id: item.hardware_product_id,
           bundle_qty_ordered: item.bundle_qty_ordered,
+          total_pieces:       item.total_pieces,
+          quantity:           item.quantity || 0,
         })));
       }
     } catch(e) { console.error(e); }
@@ -134,12 +142,16 @@ export default function PIPage() {
     setShowForm(true);
   }
 
-  function addItem() {
+  function addProfileItem(profileType) {
     if (isPlastrong) {
-      setItems([...items, { product_id: '', total_pieces: '', total_weight: '', unit_rate: '' }]);
+      setItems([...items, { item_type: 'profile', product_id: '', total_pieces: '', total_weight: '', unit_rate: '' }]);
     } else {
-      setItems([...items, { product_id: '', bundle_qty_ordered: 1, total_pieces: 1 }]);
+      setItems([...items, { item_type: 'profile', profile_type: profileType, product_id: '', bundle_qty_ordered: 1, total_pieces: 1 }]);
     }
+  }
+
+  function addHardwareItem() {
+    setItems([...items, { item_type: 'hardware', hardware_product_id: '', quantity: 1 }]);
   }
 
   function removeItem(index) { setItems(items.filter((_, i) => i !== index)); }
@@ -151,12 +163,12 @@ export default function PIPage() {
   }
 
   function getProduct(id) { return products.find(p => p.id === parseInt(id)); }
+  function getHardware(id) { return hardwareList.find(h => h.id === parseInt(id)); }
 
-  // Cynosure calculation
   function calcLine(item) {
     const p = getProduct(item.product_id);
-    if (!p || !item.bundle_qty_ordered) return { totalLength: 0, totalPieces: 0, lineTotal: 0, rate: 0 };
-    const isWhite = form.profile_type === 'white';
+    if (!p) return { totalLength: 0, totalPieces: 0, lineTotal: 0, rate: 0, totalWeight: 0 };
+    const isWhite = item.profile_type === 'white';
     let rate;
     if (form.brand === 'sinewy') {
       rate = isWhite ? p.sinewy_white_rate : p.sinewy_color_rate;
@@ -167,34 +179,43 @@ export default function PIPage() {
     }
     let totalLength, totalPieces, bundleQty;
     if (isWhite) {
-      // White — bundle based
       bundleQty   = item.bundle_qty_ordered || 1;
       totalPieces = bundleQty * p.bundle_qty;
       totalLength = bundleQty * p.bundle_qty * p.profile_length;
     } else {
-      // Color — pieces based
       totalPieces = parseInt(item.total_pieces) || 0;
       bundleQty   = Math.ceil(totalPieces / p.bundle_qty);
       totalLength = totalPieces * p.profile_length;
     }
-    const lineTotal = totalLength * rate;
-    return { totalLength, totalPieces, bundleQty, lineTotal, rate };
+    const totalWeight = totalLength * (p.weight_per_meter || 0);
+    const lineTotal   = totalLength * rate;
+    return { totalLength, totalPieces, bundleQty, lineTotal, rate, totalWeight };
   }
 
-  // Plastrong calculation — manual
   function calcLinePlastrong(item) {
     const kg   = parseFloat(item.total_weight) || 0;
     const rate = parseFloat(item.unit_rate) || 0;
     return { lineTotal: kg * rate };
   }
 
+  function calcHardwareLine(item) {
+    const h = getHardware(item.hardware_product_id);
+    if (!h) return { lineTotal: 0, rate: 0 };
+    const qty  = parseFloat(item.quantity) || 0;
+    return { lineTotal: qty * h.rate, rate: h.rate, unit: h.unit };
+  }
+
   function calcTotals() {
     let subtotal = 0;
-    if (isPlastrong) {
-      subtotal = items.reduce((sum, item) => sum + calcLinePlastrong(item).lineTotal, 0);
-    } else {
-      subtotal = items.reduce((sum, item) => sum + calcLine(item).lineTotal, 0);
-    }
+    items.forEach(item => {
+      if (item.item_type === 'hardware') {
+        subtotal += calcHardwareLine(item).lineTotal;
+      } else if (isPlastrong) {
+        subtotal += calcLinePlastrong(item).lineTotal;
+      } else {
+        subtotal += calcLine(item).lineTotal;
+      }
+    });
     const transport     = parseFloat(form.transport_charge) || 0;
     const insurance     = parseFloat(form.insurance_charge) || 0;
     const discountPct   = parseFloat(form.discount_pct) || 0;
@@ -208,31 +229,43 @@ export default function PIPage() {
   async function handleSubmit() {
     if (!form.customer_id) { setError('Customer select karo.'); return; }
     if (items.length === 0) { setError('Kam se kam ek product add karo.'); return; }
-    if (items.some(i => !i.product_id)) { setError('Sab products select karo.'); return; }
     setSaving(true); setError('');
     try {
-      let payload;
-      if (isPlastrong) {
-        payload = {
-          ...form,
-          items: items.map(item => ({
-            product_id:    item.product_id,
-            total_pieces:  parseFloat(item.total_pieces) || 0,
-            total_weight:  parseFloat(item.total_weight) || 0,
-            unit_rate:     parseFloat(item.unit_rate) || 0,
-            bundle_qty_ordered: 1, // required field
-          })),
-        };
-      } else {
-        payload = {
-          ...form,
-          items: items.map(item => ({
-            product_id:         item.product_id,
-            bundle_qty_ordered: form.profile_type === 'white' ? (parseInt(item.bundle_qty_ordered) || 1) : Math.ceil((parseInt(item.total_pieces) || 1) / (getProduct(item.product_id)?.bundle_qty || 1)),
-            total_pieces:       form.profile_type === 'white' ? null : (parseInt(item.total_pieces) || 0),
-          })),
-        };
-      }
+      const payload = {
+        ...form,
+        profile_type: 'white',
+        items: items.map(item => {
+          if (item.item_type === 'hardware') {
+            const h = getHardware(item.hardware_product_id);
+            return {
+              item_type:           'hardware',
+              hardware_product_id: item.hardware_product_id,
+              quantity:            parseFloat(item.quantity) || 0,
+              unit_rate:           h?.rate || 0,
+            };
+          } else if (isPlastrong) {
+            return {
+              item_type:          'profile',
+              product_id:         item.product_id,
+              total_pieces:       parseFloat(item.total_pieces) || 0,
+              total_weight:       parseFloat(item.total_weight) || 0,
+              unit_rate:          parseFloat(item.unit_rate) || 0,
+              bundle_qty_ordered: 1,
+              profile_type:       'white',
+            };
+          } else {
+            const isWhite = item.profile_type === 'white';
+            const p = getProduct(item.product_id);
+            return {
+              item_type:          'profile',
+              product_id:         item.product_id,
+              profile_type:       item.profile_type,
+              bundle_qty_ordered: isWhite ? (parseInt(item.bundle_qty_ordered) || 1) : Math.ceil((parseInt(item.total_pieces) || 1) / (p?.bundle_qty || 1)),
+              total_pieces:       isWhite ? null : (parseInt(item.total_pieces) || 0),
+            };
+          }
+        }),
+      };
       if (editingPI) {
         await api.put(`/pi/${editingPI.id}`, payload);
       } else {
@@ -247,20 +280,14 @@ export default function PIPage() {
 
   async function confirmPayment(id) {
     if (!confirm('Payment confirm karna chahte ho?')) return;
-    try {
-      await api.post(`/pi/${id}/confirm-payment`);
-      fetchPIs();
-      setShowDetail(null);
-    } catch (e) { alert(e.response?.data?.message || 'Error'); }
+    try { await api.post(`/pi/${id}/confirm-payment`); fetchPIs(); setShowDetail(null); }
+    catch (e) { alert(e.response?.data?.message || 'Error'); }
   }
 
   async function dispatchPI(id) {
     if (!confirm('PI dispatch karna chahte ho?')) return;
-    try {
-      await api.post(`/pi/${id}/dispatch`);
-      fetchPIs();
-      setShowDetail(null);
-    } catch (e) { alert(e.response?.data?.message || 'Error'); }
+    try { await api.post(`/pi/${id}/dispatch`); fetchPIs(); setShowDetail(null); }
+    catch (e) { alert(e.response?.data?.message || 'Error'); }
   }
 
   async function handleSubmitForApproval(id) {
@@ -282,7 +309,7 @@ export default function PIPage() {
 
   function downloadPDF(id, piNumber, showWeight = false) {
     const token = Cookies.get('cynosure_token');
-    const url = `http://127.0.0.1:8000/api/v1/pi/${id}/pdf${showWeight ? '?show_weight=1' : ''}`;
+    const url = `https://cynosurepi.online/api/v1/pi/${id}/pdf${showWeight ? '?show_weight=1' : ''}`;
     const xhr = new XMLHttpRequest();
     xhr.open('GET', url, true);
     xhr.setRequestHeader('Authorization', 'Bearer ' + token);
@@ -298,11 +325,9 @@ export default function PIPage() {
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(objUrl);
-      } else {
-        alert('PDF error: ' + xhr.status);
-      }
+      } else { alert('PDF error: ' + xhr.status); }
     };
-    xhr.onerror = function() { alert('PDF Network Error - Laravel server check karo'); };
+    xhr.onerror = function() { alert('PDF Network Error'); };
     xhr.send();
   }
 
@@ -321,6 +346,8 @@ export default function PIPage() {
   });
 
   const brandLabel = (b) => BRANDS.find(x => x.value === b)?.label || b;
+  const profileItems   = items.filter(i => i.item_type === 'profile');
+  const hardwareItems  = items.filter(i => i.item_type === 'hardware');
 
   return (
     <div>
@@ -374,7 +401,7 @@ export default function PIPage() {
               </thead>
               <tbody>
                 {filtered.map((pi, i) => (
-                  <tr key={pi.id} className={`border-b border-gray-100 hover:bg-gray-50 ${i%2===0?'':'bg-gray-50/50'}`}>
+                  <tr key={pi.id} className={`border-b border-gray-100 hover:bg-gray-50 ${i%2===0?'':`bg-gray-50/50`}`}>
                     <td className="px-4 py-3 font-mono font-medium text-blue-700">{pi.pi_number}</td>
                     <td className="px-4 py-3 text-gray-900">{pi.customer?.company_name || '-'}</td>
                     <td className="px-4 py-3 text-right font-medium text-gray-900">
@@ -417,17 +444,17 @@ export default function PIPage() {
       {/* Create / Edit Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-start justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl my-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl my-4">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <h3 className="text-base font-semibold text-gray-900">
                 {editingPI ? `Edit PI — ${editingPI.pi_number}` : 'Create New Proforma Invoice'}
               </h3>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-xl">x</button>
+              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
             </div>
             <div className="px-6 py-4 space-y-5">
               {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Customer *</label>
                   <select value={form.customer_id}
@@ -455,170 +482,227 @@ export default function PIPage() {
                   <label className="block text-xs font-medium text-gray-700 mb-1">Salesperson Name</label>
                   <input type="text" value={form.salesperson_name || ''}
                     onChange={e => setForm({...form, salesperson_name: e.target.value})}
-                    placeholder="Sales person ka naam likhein..."
+                    placeholder="Sales person ka naam..."
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-                {!isPlastrong && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Profile Type *</label>
-                    <div className="flex gap-3">
-                      {['white','color'].map(type => (
-                        <button key={type}
-                          onClick={() => setForm({...form, profile_type: type})}
-                          className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                            form.profile_type === type
-                              ? 'bg-blue-600 text-white border-blue-600'
-                              : 'bg-white text-gray-600 border-gray-300'
-                          }`}>
-                          {type === 'white' ? 'White' : 'Color'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
 
-              {/* Products */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium text-gray-700">Products *</label>
-                  <button onClick={addItem} className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Add Product</button>
+              {/* uPVC Profiles Section */}
+              {!isPlastrong && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-700">🏗️ uPVC Profiles</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => addProfileItem('white')}
+                        className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg font-medium">
+                        + White (Bundle)
+                      </button>
+                      <button onClick={() => addProfileItem('color')}
+                        className="text-xs bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 px-3 py-1.5 rounded-lg font-medium">
+                        + Color (Pieces)
+                      </button>
+                    </div>
+                  </div>
+                  {profileItems.length === 0 ? (
+                    <div className="border border-dashed border-gray-300 rounded-lg p-4 text-center text-gray-400 text-sm">
+                      White ya Color product add karo
+                    </div>
+                  ) : (
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200">
+                            <th className="text-left px-3 py-2 font-medium text-gray-600 w-16">Type</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">Product</th>
+                            <th className="text-right px-3 py-2 font-medium text-gray-600">Rate/m</th>
+                            <th className="text-right px-3 py-2 font-medium text-gray-600">Mtr/Bndl</th>
+                            <th className="text-center px-3 py-2 font-medium text-gray-600">Qty</th>
+                            <th className="text-right px-3 py-2 font-medium text-gray-600">Total Mtr</th>
+                            <th className="text-right px-3 py-2 font-medium text-gray-600">Amount</th>
+                            <th className="px-2 py-2"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map((item, index) => {
+                            if (item.item_type !== 'profile') return null;
+                            const line = calcLine(item);
+                            const prod = getProduct(item.product_id);
+                            const isWhite = item.profile_type === 'white';
+                            return (
+                              <tr key={index} className={`border-b border-gray-100 ${isWhite ? 'bg-blue-50/30' : 'bg-orange-50/30'}`}>
+                                <td className="px-3 py-2">
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isWhite ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                                    {isWhite ? 'White' : 'Color'}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <select value={item.product_id}
+                                    onChange={e => updateItem(index, 'product_id', e.target.value)}
+                                    className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                    <option value="">Select Product</option>
+                                    {products.map(p => (
+                                      <option key={p.id} value={p.id}>{p.product_code} — {p.product_name}</option>
+                                    ))}
+                                  </select>
+                                  {prod && (
+                                    <div className="text-gray-400 mt-0.5">
+                                      1 bundle = {prod.bundle_qty} pcs × {prod.profile_length}m
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-right text-gray-700">
+                                  {prod ? (() => {
+                                    const isW = item.profile_type === 'white';
+                                    if (form.brand === 'sinewy') return `Rs.${isW ? prod.sinewy_white_rate : prod.sinewy_color_rate}`;
+                                    if (form.brand === 'assre_plasto') return `Rs.${isW ? prod.assre_white_rate : prod.assre_color_rate}`;
+                                    return `Rs.${isW ? prod.white_rate : prod.color_rate}`;
+                                  })() : '-'}
+                                </td>
+                                <td className="px-3 py-2 text-right text-gray-500">
+                                  {prod ? `${(prod.bundle_qty * prod.profile_length).toFixed(2)}m` : '-'}
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  {isWhite ? (
+                                    <input type="number" min="1" value={item.bundle_qty_ordered}
+                                      onChange={e => updateItem(index, 'bundle_qty_ordered', parseInt(e.target.value)||1)}
+                                      className="w-14 border border-gray-300 rounded px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                  ) : (
+                                    <input type="number" min="1" value={item.total_pieces}
+                                      onChange={e => updateItem(index, 'total_pieces', parseInt(e.target.value)||1)}
+                                      className="w-16 border border-orange-300 rounded px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-orange-400"
+                                    />
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-right font-medium text-blue-700">
+                                  {line.totalLength > 0 ? `${line.totalLength.toFixed(2)}m` : '-'}
+                                </td>
+                                <td className="px-3 py-2 text-right font-medium text-gray-900">
+                                  {line.lineTotal > 0 ? `Rs.${line.lineTotal.toFixed(2)}` : '-'}
+                                </td>
+                                <td className="px-2 py-2">
+                                  <button onClick={() => removeItem(index)} className="text-red-400 hover:text-red-600">✕</button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
-                {items.length === 0 ? (
-                  <div className="border border-dashed border-gray-300 rounded-lg p-6 text-center text-gray-400 text-sm">
-                    Click "+ Add Product" to start
+              )}
+
+              {/* Plastrong Section */}
+              {isPlastrong && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-gray-700">Products</span>
+                    <button onClick={() => addProfileItem('white')}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Add Product</button>
                   </div>
-                ) : isPlastrong ? (
-                  /* Plastrong form — manual entry */
                   <div className="border border-gray-200 rounded-lg overflow-hidden">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="bg-gray-50 border-b border-gray-200">
-                          <th className="text-left px-3 py-2 font-medium text-gray-600 w-6">#</th>
                           <th className="text-left px-3 py-2 font-medium text-gray-600">Product</th>
-                          <th className="text-right px-3 py-2 font-medium text-gray-600 w-20">Pieces</th>
-                          <th className="text-right px-3 py-2 font-medium text-gray-600 w-20">Kg</th>
-                          <th className="text-right px-3 py-2 font-medium text-gray-600 w-24">Rate (Rs./kg)</th>
-                          <th className="text-right px-3 py-2 font-medium text-gray-600 w-28">Amount</th>
-                          <th className="px-2 py-2 w-6"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((item, index) => {
-                          const line = calcLinePlastrong(item);
-                          return (
-                            <tr key={index} className="border-b border-gray-100">
-                              <td className="px-3 py-2 text-gray-400">{index+1}</td>
-                              <td className="px-3 py-2">
-                                <select value={item.product_id}
-                                  onChange={e => updateItem(index, 'product_id', e.target.value)}
-                                  className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
-                                  <option value="">Select Product</option>
-                                  {products.map(p => (
-                                    <option key={p.id} value={p.id}>{p.product_code} — {p.product_name}</option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td className="px-3 py-2">
-                                <input type="number" value={item.total_pieces}
-                                  onChange={e => updateItem(index, 'total_pieces', e.target.value)}
-                                  placeholder="0"
-                                  className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                />
-                              </td>
-                              <td className="px-3 py-2">
-                                <input type="number" step="0.001" value={item.total_weight}
-                                  onChange={e => updateItem(index, 'total_weight', e.target.value)}
-                                  placeholder="0.000"
-                                  className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-amber-400"
-                                />
-                              </td>
-                              <td className="px-3 py-2">
-                                <input type="number" value={item.unit_rate}
-                                  onChange={e => updateItem(index, 'unit_rate', e.target.value)}
-                                  placeholder="0"
-                                  className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                />
-                              </td>
-                              <td className="px-3 py-2 text-right font-medium text-gray-900">
-                                {line.lineTotal > 0 ? `Rs.${line.lineTotal.toFixed(2)}` : '-'}
-                              </td>
-                              <td className="px-2 py-2">
-                                <button onClick={() => removeItem(index)} className="text-red-400 hover:text-red-600">✕</button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  /* Cynosure form — bundle based */
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200">
-                          <th className="text-left px-3 py-2 font-medium text-gray-600 w-6">#</th>
-                          <th className="text-left px-3 py-2 font-medium text-gray-600">Product</th>
-                          <th className="text-right px-3 py-2 font-medium text-gray-600">Rate/m</th>
-                          <th className="text-right px-3 py-2 font-medium text-gray-600">Mtr/Bundle</th>
-                          <th className="text-center px-3 py-2 font-medium text-gray-600">{form.profile_type === 'white' ? 'Bundles' : 'Pieces'}</th>
-                          <th className="text-right px-3 py-2 font-medium text-gray-600">Total Mtr</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Pieces</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Kg</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Rate/kg</th>
                           <th className="text-right px-3 py-2 font-medium text-gray-600">Amount</th>
                           <th className="px-2 py-2"></th>
                         </tr>
                       </thead>
                       <tbody>
                         {items.map((item, index) => {
-                          const line = calcLine(item);
-                          const prod = getProduct(item.product_id);
+                          const kg   = parseFloat(item.total_weight) || 0;
+                          const rate = parseFloat(item.unit_rate) || 0;
+                          const lineTotal = kg * rate;
                           return (
                             <tr key={index} className="border-b border-gray-100">
-                              <td className="px-3 py-2 text-gray-400">{index+1}</td>
                               <td className="px-3 py-2">
                                 <select value={item.product_id}
                                   onChange={e => updateItem(index, 'product_id', e.target.value)}
-                                  className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                  className="w-full border border-gray-300 rounded px-2 py-1 text-xs">
                                   <option value="">Select Product</option>
-                                  {products.map(p => (
-                                    <option key={p.id} value={p.id}>{p.product_code} — {p.product_name}</option>
+                                  {products.map(p => <option key={p.id} value={p.id}>{p.product_code} — {p.product_name}</option>)}
+                                </select>
+                              </td>
+                              <td className="px-3 py-2">
+                                <input type="number" value={item.total_pieces} onChange={e => updateItem(index, 'total_pieces', e.target.value)} placeholder="0" className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-right"/>
+                              </td>
+                              <td className="px-3 py-2">
+                                <input type="number" step="0.001" value={item.total_weight} onChange={e => updateItem(index, 'total_weight', e.target.value)} placeholder="0.000" className="w-full border border-amber-300 rounded px-2 py-1 text-xs text-right"/>
+                              </td>
+                              <td className="px-3 py-2">
+                                <input type="number" value={item.unit_rate} onChange={e => updateItem(index, 'unit_rate', e.target.value)} placeholder="0" className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-right"/>
+                              </td>
+                              <td className="px-3 py-2 text-right font-medium">{lineTotal > 0 ? `Rs.${lineTotal.toFixed(2)}` : '-'}</td>
+                              <td className="px-2 py-2"><button onClick={() => removeItem(index)} className="text-red-400 hover:text-red-600">✕</button></td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Hardware Section */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-gray-700">🔧 Hardware & Accessories</span>
+                  <button onClick={addHardwareItem}
+                    className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-1.5 rounded-lg font-medium">
+                    + Add Hardware
+                  </button>
+                </div>
+                {hardwareItems.length === 0 ? (
+                  <div className="border border-dashed border-gray-200 rounded-lg p-3 text-center text-gray-400 text-xs">
+                    Hardware optional hai — Handle, Lock, Track etc.
+                  </div>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-green-50 border-b border-gray-200">
+                          <th className="text-left px-3 py-2 font-medium text-gray-600">Hardware Item</th>
+                          <th className="text-center px-3 py-2 font-medium text-gray-600">Unit</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Rate</th>
+                          <th className="text-center px-3 py-2 font-medium text-gray-600">Qty</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Amount</th>
+                          <th className="px-2 py-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((item, index) => {
+                          if (item.item_type !== 'hardware') return null;
+                          const hw   = getHardware(item.hardware_product_id);
+                          const line = calcHardwareLine(item);
+                          return (
+                            <tr key={index} className="border-b border-gray-100 bg-green-50/20">
+                              <td className="px-3 py-2">
+                                <select value={item.hardware_product_id}
+                                  onChange={e => updateItem(index, 'hardware_product_id', e.target.value)}
+                                  className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-500">
+                                  <option value="">Select Hardware</option>
+                                  {hardwareList.map(h => (
+                                    <option key={h.id} value={h.id}>{h.code} — {h.name}</option>
                                   ))}
                                 </select>
-                                {prod && (
-                                  <div className="text-gray-400 mt-0.5">
-                                    1 bundle = {prod.bundle_qty} pcs × {prod.profile_length}m = {(prod.bundle_qty * prod.profile_length).toFixed(2)}m
-                                  </div>
-                                )}
                               </td>
-                              <td className="px-3 py-2 text-right text-gray-700">
-                                {prod ? (() => {
-                                const isWhite = form.profile_type === 'white';
-                                if (form.brand === 'sinewy') return `Rs.${isWhite ? prod.sinewy_white_rate : prod.sinewy_color_rate}`;
-                                if (form.brand === 'assre_plasto') return `Rs.${isWhite ? prod.assre_white_rate : prod.assre_color_rate}`;
-                                return `Rs.${isWhite ? prod.white_rate : prod.color_rate}`;
-                              })() : '-'}
-                              </td>
-                              <td className="px-3 py-2 text-right text-gray-500">
-                                {prod ? `${(prod.bundle_qty * prod.profile_length).toFixed(2)}m` : '-'}
-                              </td>
+                              <td className="px-3 py-2 text-center text-gray-500 capitalize">{hw?.unit || '-'}</td>
+                              <td className="px-3 py-2 text-right text-gray-700">{hw ? `Rs.${hw.rate}` : '-'}</td>
                               <td className="px-3 py-2 text-center">
-                                {form.profile_type === 'white' ? (
-                                  <input type="number" min="1" value={item.bundle_qty_ordered}
-                                    onChange={e => updateItem(index, 'bundle_qty_ordered', parseInt(e.target.value)||1)}
-                                    className="w-14 border border-gray-300 rounded px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                  />
-                                ) : (
-                                  <input type="number" min="1" value={item.total_pieces}
-                                    onChange={e => updateItem(index, 'total_pieces', parseInt(e.target.value)||1)}
-                                    className="w-16 border border-orange-300 rounded px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-orange-400"
-                                  />
-                                )}
+                                <input type="number" min="1" step="0.001" value={item.quantity}
+                                  onChange={e => updateItem(index, 'quantity', e.target.value)}
+                                  className="w-16 border border-green-300 rounded px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-green-500"
+                                />
                               </td>
-                              <td className="px-3 py-2 text-right font-medium text-blue-700">
-                                {line.totalLength > 0 ? `${line.totalLength.toFixed(2)}m` : '-'}
-                              </td>
-                              <td className="px-3 py-2 text-right font-medium text-gray-900">
+                              <td className="px-3 py-2 text-right font-medium text-green-700">
                                 {line.lineTotal > 0 ? `Rs.${line.lineTotal.toFixed(2)}` : '-'}
                               </td>
                               <td className="px-2 py-2">
@@ -693,10 +777,10 @@ export default function PIPage() {
                       </div>
                     </div>
                     <div className="mt-3">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Received In (Account/Person)</label>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Received In</label>
                       <input type="text" value={form.received_in}
                         onChange={e => setForm({...form, received_in: e.target.value})}
-                        placeholder="e.g. Mannaf PhonePe / SBI Personal Account"
+                        placeholder="e.g. Mannaf PhonePe"
                         className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
                       />
                     </div>
@@ -713,6 +797,14 @@ export default function PIPage() {
                 <div className="bg-gray-50 rounded-xl p-4 space-y-2">
                   <p className="text-xs font-medium text-gray-700 mb-3">Summary</p>
                   <div className="flex justify-between text-sm text-gray-600">
+                    <span>uPVC Profiles</span>
+                    <span>Rs.{items.filter(i=>i.item_type==='profile').reduce((s,item)=> s + (isPlastrong ? calcLinePlastrong(item).lineTotal : calcLine(item).lineTotal), 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>Hardware</span>
+                    <span>Rs.{items.filter(i=>i.item_type==='hardware').reduce((s,item)=> s + calcHardwareLine(item).lineTotal, 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-gray-600 border-t border-gray-200 pt-1">
                     <span>Subtotal</span><span>Rs.{totals.subtotal.toFixed(2)}</span>
                   </div>
                   {totals.discountPct > 0 && (
@@ -759,7 +851,7 @@ export default function PIPage() {
                   {STATUS_LABELS[showDetail.status]}
                 </span>
               </div>
-              <button onClick={() => setShowDetail(null)} className="text-gray-400 hover:text-gray-600 text-xl">x</button>
+              <button onClick={() => setShowDetail(null)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
             </div>
             <div className="px-6 py-4 space-y-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -769,95 +861,80 @@ export default function PIPage() {
                   <p className="text-gray-500">{showDetail.customer?.customer_name}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Brand</p>
+                  <p className="text-xs text-gray-500">Brand / Salesperson</p>
                   <p className="font-medium text-gray-900">{brandLabel(showDetail.brand)}</p>
+                  <p className="text-gray-500">{showDetail.salesperson_name || '-'}</p>
                 </div>
               </div>
 
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Code</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-600">Product</th>
-                      {isPlastrong ? (
-                        <>
-                          <th className="text-right px-3 py-2 font-medium text-gray-600">Pieces</th>
-                          <th className="text-right px-3 py-2 font-medium text-gray-600">Kg</th>
-                          <th className="text-right px-3 py-2 font-medium text-gray-600">Rate/kg</th>
-                        </>
-                      ) : (
-                        <>
-                          <th className="text-right px-3 py-2 font-medium text-gray-600">Bundles</th>
+              {/* Profile Items */}
+              {showDetail.items?.filter(i => i.item_type !== 'hardware').length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase mb-2">🏗️ uPVC Profiles</p>
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                          <th className="text-left px-3 py-2 font-medium text-gray-600">Type</th>
+                          <th className="text-left px-3 py-2 font-medium text-gray-600">Code</th>
+                          <th className="text-left px-3 py-2 font-medium text-gray-600">Product</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Bundles/Pcs</th>
                           <th className="text-right px-3 py-2 font-medium text-gray-600">Total Mtr</th>
-                          <th className="text-right px-3 py-2 font-medium text-gray-600">Weight (kg)</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Weight</th>
                           <th className="text-right px-3 py-2 font-medium text-gray-600">Rate/m</th>
-                        </>
-                      )}
-                      <th className="text-right px-3 py-2 font-medium text-gray-600">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {showDetail.items?.map((item, i) => (
-                      <tr key={i} className="border-b border-gray-100">
-                        <td className="px-3 py-2 font-mono text-blue-700">{item.product_code_snap}</td>
-                        <td className="px-3 py-2 text-gray-900">{item.product_name_snap}</td>
-                        {isPlastrong ? (
-                          <>
-                            <td className="px-3 py-2 text-right text-gray-700">{item.total_pieces}</td>
-                            <td className="px-3 py-2 text-right text-amber-700 font-medium">{parseFloat(item.total_weight).toFixed(3)} kg</td>
-                            <td className="px-3 py-2 text-right text-gray-700">Rs.{item.unit_rate_snap}</td>
-                          </>
-                        ) : (
-                          <>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {showDetail.items?.filter(i => i.item_type !== 'hardware').map((item, i) => (
+                          <tr key={i} className="border-b border-gray-100">
+                            <td className="px-3 py-2">
+                              <span className={`text-xs px-1.5 py-0.5 rounded-full ${item.profile_type_snap === 'color' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                {item.profile_type_snap === 'color' ? 'Color' : 'White'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 font-mono text-blue-700">{item.product_code_snap}</td>
+                            <td className="px-3 py-2 text-gray-900">{item.product_name_snap}</td>
                             <td className="px-3 py-2 text-right text-gray-700">{item.bundle_qty_ordered}</td>
                             <td className="px-3 py-2 text-right text-blue-700 font-medium">{item.total_length}m</td>
-                            <td className="px-3 py-2 text-right text-amber-700 font-medium">{parseFloat(item.total_weight || 0).toFixed(3)} kg</td>
+                            <td className="px-3 py-2 text-right text-amber-700">{parseFloat(item.total_weight||0).toFixed(3)}kg</td>
                             <td className="px-3 py-2 text-right text-gray-700">Rs.{item.unit_rate_snap}</td>
-                          </>
-                        )}
-                        <td className="px-3 py-2 text-right font-medium text-gray-900">Rs.{parseFloat(item.line_total).toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                            <td className="px-3 py-2 text-right font-medium text-gray-900">Rs.{parseFloat(item.line_total).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
-              {/* Payment Info */}
-              {showDetail.actual_amount > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm">
-                  <p className="font-semibold text-amber-800 mb-2">💰 Payment Details (Internal)</p>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <p className="text-gray-500">PI Amount</p>
-                      <p className="font-semibold text-gray-900">Rs.{parseFloat(showDetail.grand_total).toFixed(2)}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500">Actual Received</p>
-                      <p className="font-semibold text-green-700">Rs.{parseFloat(showDetail.actual_amount).toFixed(2)}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500">Difference</p>
-                      <p className={`font-semibold ${parseFloat(showDetail.grand_total) - parseFloat(showDetail.actual_amount) > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        Rs.{(parseFloat(showDetail.grand_total) - parseFloat(showDetail.actual_amount)).toFixed(2)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500">Mode</p>
-                      <p className="font-semibold text-gray-900 capitalize">{showDetail.payment_mode || '-'}</p>
-                    </div>
-                    {showDetail.received_in && (
-                      <div className="col-span-2">
-                        <p className="text-gray-500">Received In</p>
-                        <p className="font-semibold text-gray-900">{showDetail.received_in}</p>
-                      </div>
-                    )}
-                    {showDetail.payment_note && (
-                      <div className="col-span-2">
-                        <p className="text-gray-500">Note</p>
-                        <p className="text-gray-700">{showDetail.payment_note}</p>
-                      </div>
-                    )}
+              {/* Hardware Items */}
+              {showDetail.items?.filter(i => i.item_type === 'hardware').length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase mb-2">🔧 Hardware & Accessories</p>
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-green-50 border-b border-gray-200">
+                          <th className="text-left px-3 py-2 font-medium text-gray-600">Item</th>
+                          <th className="text-center px-3 py-2 font-medium text-gray-600">Unit</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Qty</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Rate</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-600">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {showDetail.items?.filter(i => i.item_type === 'hardware').map((item, i) => (
+                          <tr key={i} className="border-b border-gray-100 bg-green-50/20">
+                            <td className="px-3 py-2 font-medium text-gray-900">{item.hardware_name_snap}</td>
+                            <td className="px-3 py-2 text-center text-gray-500 capitalize">{item.hardware_unit_snap}</td>
+                            <td className="px-3 py-2 text-right text-gray-700">{item.quantity}</td>
+                            <td className="px-3 py-2 text-right text-gray-700">Rs.{item.unit_rate_snap}</td>
+                            <td className="px-3 py-2 text-right font-medium text-green-700">Rs.{parseFloat(item.line_total).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
@@ -888,7 +965,6 @@ export default function PIPage() {
                 </div>
               </div>
             </div>
-
             <div className="px-6 py-4 border-t border-gray-200 flex gap-3 justify-end flex-wrap">
               {(showDetail.status === 'draft' || showDetail.status === 'rejected') && (
                 <>
