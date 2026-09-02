@@ -47,7 +47,7 @@ export default function PIPage() {
 
   const EMPTY_FORM = {
     customer_id: '', brand: defaultBrand,
-    transport_charge: '0', insurance_charge: '0',
+    transport_charge: '0', insurance_charge: '0', insurance_pct: '0',
     discount_pct: '0', remarks: '',
     salesperson_name: '',
     color_name: '',
@@ -109,6 +109,7 @@ export default function PIPage() {
       brand:            pi.brand || defaultBrand,
       transport_charge: pi.transport_charge,
       insurance_charge: pi.insurance_charge,
+      insurance_pct:    pi.insurance_pct || '0',
       discount_pct:     pi.discount_pct || '0',
       remarks:          pi.remarks || '',
       salesperson_name: pi.salesperson_name || '',
@@ -222,14 +223,15 @@ export default function PIPage() {
       }
     });
     const transport     = parseFloat(form.transport_charge) || 0;
-    const insurance     = parseFloat(form.insurance_charge) || 0;
+    const insurancePct  = parseFloat(form.insurance_pct) || 0;
     const discountPct   = parseFloat(form.discount_pct) || 0;
     const discountAmt   = subtotal * discountPct / 100;
     const afterDiscount = subtotal - discountAmt;
+    const insurance     = Math.round(afterDiscount * insurancePct / 100 * 100) / 100;
     const taxable       = afterDiscount + transport + insurance;
     const gst           = taxable * 0.18;
     const grand         = taxable + gst;
-    return { subtotal, discountPct, discountAmt, afterDiscount, transport, insurance, gst, grand };
+    return { subtotal, discountPct, discountAmt, afterDiscount, transport, insurance, insurancePct, gst, grand };
   }
 
   async function handleSubmit() {
@@ -766,11 +768,15 @@ export default function PIPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Insurance (Rs.)</label>
-                      <input type="number" value={form.insurance_charge}
-                        onChange={e => setForm({...form, insurance_charge: e.target.value})}
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Insurance % <span className="text-gray-400">(After Discount pe)</span></label>
+                      <input type="number" min="0" max="5" step="0.001" value={form.insurance_pct}
+                        onChange={e => setForm({...form, insurance_pct: e.target.value})}
+                        placeholder="e.g. 0.75"
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
+                      {totals.insurance > 0 && (
+                        <p className="text-xs text-gray-500 mt-1">= Rs.{totals.insurance.toFixed(2)}</p>
+                      )}
                     </div>
                   </div>
                   <div>
@@ -854,7 +860,7 @@ export default function PIPage() {
                     <span>Transport</span><span>Rs.{totals.transport.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-sm text-gray-600">
-                    <span>Insurance</span><span>Rs.{totals.insurance.toFixed(2)}</span>
+                    <span>Insurance ({totals.insurancePct}%)</span><span>Rs.{totals.insurance.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-sm text-gray-600">
                     <span>GST 18%</span><span>Rs.{totals.gst.toFixed(2)}</span>
