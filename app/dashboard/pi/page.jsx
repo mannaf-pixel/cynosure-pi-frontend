@@ -138,6 +138,7 @@ export default function PIPage() {
           bundle_qty_ordered: item.bundle_qty_ordered,
           total_pieces:       item.total_pieces,
           quantity:           item.quantity || 0,
+          color_name:         item.color_name || '',
         })));
       }
     } catch(e) { console.error(e); }
@@ -150,7 +151,7 @@ export default function PIPage() {
     if (isPlastrong) {
       setItems([...items, { item_type: 'profile', product_id: '', total_pieces: '', total_weight: '', unit_rate: '' }]);
     } else {
-      setItems([...items, { item_type: 'profile', profile_type: profileType, product_id: '', bundle_qty_ordered: 1, total_pieces: 1 }]);
+      setItems([...items, { item_type: 'profile', profile_type: profileType, product_id: '', bundle_qty_ordered: 1, total_pieces: 1, color_name: '' }]);
     }
   }
 
@@ -267,6 +268,7 @@ export default function PIPage() {
               profile_type:       item.profile_type,
               bundle_qty_ordered: isWhite ? (parseInt(item.bundle_qty_ordered) || 1) : Math.ceil((parseInt(item.total_pieces) || 1) / (p?.bundle_qty || 1)),
               total_pieces:       isWhite ? null : (parseInt(item.total_pieces) || 0),
+              color_name:         isWhite ? null : (item.color_name || null),
             };
           }
         }),
@@ -579,6 +581,13 @@ export default function PIPage() {
                                     <div className="text-gray-400 mt-0.5">
                                       1 bundle = {prod.bundle_qty} pcs × {prod.profile_length}m
                                     </div>
+                                  )}
+                                  {!isWhite && (
+                                    <input type="text" value={item.color_name || ''}
+                                      onChange={e => updateItem(index, 'color_name', e.target.value)}
+                                      placeholder="Color naam (Charcoal, Rosewood...)"
+                                      className="w-full border border-orange-200 rounded px-2 py-1 text-xs mt-1 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                                    />
                                   )}
                                 </td>
                                 <td className="px-3 py-2 text-right text-gray-700">
