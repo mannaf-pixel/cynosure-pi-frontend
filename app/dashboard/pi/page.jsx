@@ -225,8 +225,9 @@ export default function PIPage() {
     const discountPct   = parseFloat(form.discount_pct) || 0;
     const discountAmt   = subtotal * discountPct / 100;
     const afterDiscount = subtotal - discountAmt;
-    const gst           = afterDiscount * 0.18;
-    const grand         = afterDiscount + transport + insurance + gst;
+    const taxable       = afterDiscount + transport + insurance;
+    const gst           = taxable * 0.18;
+    const grand         = taxable + gst;
     return { subtotal, discountPct, discountAmt, afterDiscount, transport, insurance, gst, grand };
   }
 
