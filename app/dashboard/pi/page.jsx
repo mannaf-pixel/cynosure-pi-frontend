@@ -194,8 +194,10 @@ export default function PIPage() {
       totalLength = totalPieces * p.profile_length;
     }
     const totalWeight = totalLength * (p.weight_per_meter || 0);
-    const lineTotal   = totalLength * rate;
-    return { totalLength, totalPieces, bundleQty, lineTotal, rate, totalWeight };
+    const discountPct = parseFloat(form.discount_pct) || 0;
+    const netRate     = Math.round(rate * (1 - discountPct / 100) * 100) / 100;
+    const lineTotal   = Math.round(totalLength * netRate * 100) / 100;
+    return { totalLength, totalPieces, bundleQty, lineTotal, rate, netRate, totalWeight };
   }
 
   function calcLinePlastrong(item) {
@@ -225,12 +227,12 @@ export default function PIPage() {
     const transport     = parseFloat(form.transport_charge) || 0;
     const insurancePct  = parseFloat(form.insurance_pct) || 0;
     const discountPct   = parseFloat(form.discount_pct) || 0;
-    const discountAmt   = subtotal * discountPct / 100;
-    const afterDiscount = subtotal - discountAmt;
+    const discountAmt   = 0; // Already applied per item
+    const afterDiscount = subtotal; // Already discounted
     const insurance     = Math.round(afterDiscount * insurancePct / 100 * 100) / 100;
     const taxable       = afterDiscount + transport + insurance;
-    const gst           = taxable * 0.18;
-    const grand         = taxable + gst;
+    const gst           = Math.round(taxable * 0.18 * 100) / 100;
+    const grand         = Math.round((taxable + gst) * 100) / 100;
     return { subtotal, discountPct, discountAmt, afterDiscount, transport, insurance, insurancePct, gst, grand };
   }
 
@@ -780,7 +782,7 @@ export default function PIPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Discount % <span className="text-green-600">(Subtotal pe lagega)</span></label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Discount % <span className="text-green-600">(Har item rate pe lagega)</span></label>
                     <input type="number" min="0" max="100" step="0.01" value={form.discount_pct}
                       onChange={e => setForm({...form, discount_pct: e.target.value})}
                       className="w-full border border-green-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
@@ -848,14 +850,9 @@ export default function PIPage() {
                     <span>Rs.{items.filter(i=>i.item_type==='hardware').reduce((s,item)=> s + calcHardwareLine(item).lineTotal, 0).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-sm text-gray-600 border-t border-gray-200 pt-1">
-                    <span>Subtotal</span><span>Rs.{totals.subtotal.toFixed(2)}</span>
+                    <span>Subtotal {totals.discountPct > 0 ? `(after ${totals.discountPct}% disc.)` : ''}</span>
+                    <span>Rs.{totals.subtotal.toFixed(2)}</span>
                   </div>
-                  {totals.discountPct > 0 && (
-                    <div className="flex justify-between text-sm text-green-600 font-medium">
-                      <span>Discount ({totals.discountPct}%)</span>
-                      <span>- Rs.{totals.discountAmt.toFixed(2)}</span>
-                    </div>
-                  )}
                   <div className="flex justify-between text-sm text-gray-600">
                     <span>Transport</span><span>Rs.{totals.transport.toFixed(2)}</span>
                   </div>
