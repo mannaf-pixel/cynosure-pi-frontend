@@ -21,6 +21,7 @@ export default function DispatchPage() {
 
   const [scheduleModal, setScheduleModal] = useState(null);
   const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleForm, setScheduleForm] = useState({ stock_status: '', production_status: '', schedule_remarks: '' });
   const [scheduleSaving, setScheduleSaving] = useState(false);
 
   useEffect(() => { fetchPIs(); }, [filter]);
@@ -38,9 +39,15 @@ export default function DispatchPage() {
     if (!scheduleDate) { alert('Date select karo.'); return; }
     setScheduleSaving(true);
     try {
-      await api.post(`/pi/${scheduleModal.id}/schedule-delivery`, { expected_dispatch_date: scheduleDate });
+      await api.post(`/pi/${scheduleModal.id}/schedule-delivery`, {
+        expected_dispatch_date: scheduleDate,
+        stock_status:           scheduleForm.stock_status || null,
+        production_status:      scheduleForm.production_status || null,
+        schedule_remarks:       scheduleForm.schedule_remarks || null,
+      });
       setScheduleModal(null);
       setScheduleDate('');
+      setScheduleForm({ stock_status: '', production_status: '', schedule_remarks: '' });
       fetchPIs();
     } catch (e) { alert(e.response?.data?.message || 'Error'); }
     finally { setScheduleSaving(false); }
@@ -446,10 +453,43 @@ export default function DispatchPage() {
             </div>
             <div className="px-6 py-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Expected Delivery Date *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">📅 Expected Delivery Date *</label>
                 <input type="date" value={scheduleDate}
                   onChange={e => setScheduleDate(e.target.value)}
                   min={new Date().toISOString().split('T')[0]}
+                  className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">📦 Stock Status</label>
+                  <select value={scheduleForm.stock_status}
+                    onChange={e => setScheduleForm({...scheduleForm, stock_status: e.target.value})}
+                    className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    <option value="">Select Status</option>
+                    <option value="ready">✅ Ready — Stock Available</option>
+                    <option value="partial">⚠️ Partial — Kuch Available</option>
+                    <option value="not_available">❌ Not Available</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">🏭 Production Status</label>
+                  <select value={scheduleForm.production_status}
+                    onChange={e => setScheduleForm({...scheduleForm, production_status: e.target.value})}
+                    className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    <option value="">Select Status</option>
+                    <option value="ready">✅ Ready — Production Done</option>
+                    <option value="in_production">🔄 In Production</option>
+                    <option value="pending">⏳ Pending — Production Start Nahi</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">📝 Schedule Remarks</label>
+                <textarea value={scheduleForm.schedule_remarks}
+                  onChange={e => setScheduleForm({...scheduleForm, schedule_remarks: e.target.value})}
+                  rows={3}
+                  placeholder="Stock detail, production note, special instructions..."
                   className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>

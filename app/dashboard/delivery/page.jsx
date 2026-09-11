@@ -58,17 +58,28 @@ export default function DeliveryAlertPage() {
       <div className={`bg-white rounded-xl border-l-4 ${badgeColor} p-4 shadow-sm`}>
         <div className="flex items-start justify-between">
           <div>
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className="font-mono font-bold text-blue-700">{pi.pi_number}</span>
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge}`}>{pi.diff !== undefined ? (pi.diff < 0 ? `${Math.abs(pi.diff)} din overdue` : pi.diff === 0 ? 'Aaj' : `${pi.diff} din baad`) : ''}</span>
+              {pi.stock_status === 'ready'         && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">✅ Stock Ready</span>}
+              {pi.stock_status === 'partial'       && <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-medium">⚠️ Partial Stock</span>}
+              {pi.stock_status === 'not_available' && <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">❌ Stock NA</span>}
+              {pi.production_status === 'ready'         && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-800 font-medium">🏭 Production Done</span>}
+              {pi.production_status === 'in_production' && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">🔄 In Production</span>}
+              {pi.production_status === 'pending'       && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">⏳ Production Pending</span>}
             </div>
             <p className="font-medium text-gray-900 text-sm">{pi.customer?.company_name}</p>
             <p className="text-xs text-gray-500">{pi.customer?.customer_name}</p>
-            <div className="flex gap-4 mt-2 text-xs text-gray-500">
+            <div className="flex gap-4 mt-2 text-xs text-gray-500 flex-wrap">
               <span>📅 Expected: {d}</span>
               <span className="capitalize">📋 {pi.brand}</span>
               {pi.salesperson_name && <span>👤 {pi.salesperson_name}</span>}
             </div>
+            {pi.schedule_remarks && (
+              <div className="mt-2 bg-purple-50 border border-purple-100 rounded px-3 py-2 text-xs text-purple-800">
+                📝 {pi.schedule_remarks}
+              </div>
+            )}
           </div>
           <div className="text-right">
             <p className="font-bold text-gray-900">Rs.{fmt(pi.grand_total)}</p>
