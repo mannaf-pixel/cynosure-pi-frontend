@@ -3,14 +3,14 @@ import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 
 const TABS = [
-  { key: 'datewise',        label: 'Date-wise',     icon: '📅' },
-  { key: 'customerwise',    label: 'Customer-wise', icon: '👤' },
-  { key: 'productwise',     label: 'Product-wise',  icon: '📦' },
-  { key: 'monthly',         label: 'Monthly',       icon: '📆' },
-  { key: 'statuswise',      label: 'Status-wise',   icon: '📊' },
-  { key: 'gst',             label: 'GST Report',    icon: '🧾' },
-  { key: 'dispatch',        label: 'Dispatch',      icon: '🚚' },
-  { key: 'salespersonwise', label: 'Salesperson',   icon: '👔' },
+  { key: 'datewise',        label: 'Date-wise' },
+  { key: 'customerwise',    label: 'Customer-wise' },
+  { key: 'productwise',     label: 'Product-wise' },
+  { key: 'monthly',         label: 'Monthly' },
+  { key: 'statuswise',      label: 'Status-wise' },
+  { key: 'gst',             label: 'GST Report' },
+  { key: 'dispatch',        label: 'Dispatch Report' },
+  { key: 'salespersonwise', label: 'Salesperson' },
 ];
 
 const STATUS_OPTIONS = [
@@ -44,39 +44,38 @@ const BRAND_OPTIONS = [
 ];
 
 export default function ReportsPage() {
-  const [activeTab, setActiveTab] = useState('datewise');
-  const [data, setData]           = useState([]);
-  const [summary, setSummary]     = useState(null);
-  const [loading, setLoading]     = useState(false);
-  const [customers, setCustomers] = useState([]);
+  const [activeTab, setActiveTab]     = useState('datewise');
+  const [data, setData]               = useState([]);
+  const [summary, setSummary]         = useState(null);
+  const [loading, setLoading]         = useState(false);
+  const [customers, setCustomers]     = useState([]);
   const [salespersons, setSalespersons] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [expanded, setExpanded]       = useState({});
 
-  const today = new Date().toISOString().split('T')[0];
+  const today        = new Date().toISOString().split('T')[0];
   const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
 
   const [filters, setFilters] = useState({
-    from: firstOfMonth, to: today, year: new Date().getFullYear(),
+    from: firstOfMonth, to: today,
+    year: new Date().getFullYear(),
     customer_id: '', brand: '', status: '', salesperson: '',
     amount_min: '', amount_max: '',
   });
 
-  useEffect(() => {
-    fetchReport();
-    fetchMeta();
-  }, [activeTab]);
+  useEffect(() => { fetchReport(); fetchMeta(); }, [activeTab]);
 
   async function fetchMeta() {
     try {
-      const [custRes] = await Promise.all([api.get('/customers?per_page=200')]);
-      setCustomers(custRes.data.data || []);
+      const res = await api.get('/customers?per_page=200');
+      setCustomers(res.data.data || []);
     } catch(e) {}
   }
 
   async function fetchReport() {
     setLoading(true);
     try {
-      let params = new URLSearchParams();
+      const params = new URLSearchParams();
       if (activeTab === 'monthly') {
         params.append('year', filters.year);
       } else {
@@ -84,28 +83,34 @@ export default function ReportsPage() {
         params.append('to', filters.to);
       }
       if (filters.customer_id) params.append('customer_id', filters.customer_id);
-      if (filters.brand)       params.append('brand', filters.brand);
-      if (filters.status)      params.append('status', filters.status);
-      if (filters.salesperson) params.append('salesperson', filters.salesperson);
-      if (filters.amount_min)  params.append('amount_min', filters.amount_min);
-      if (filters.amount_max)  params.append('amount_max', filters.amount_max);
+      if (filters.brand)        params.append('brand', filters.brand);
+      if (filters.status)       params.append('status', filters.status);
+      if (filters.salesperson)  params.append('salesperson', filters.salesperson);
+      if (filters.amount_min)   params.append('amount_min', filters.amount_min);
+      if (filters.amount_max)   params.append('amount_max', filters.amount_max);
 
       const res = await api.get(`/reports/${activeTab}?${params.toString()}`);
-      setData(res.data.data);
+      const rows = res.data.data || [];
+      setData(rows);
       setSummary(res.data.summary || null);
 
-      // Extract unique salespersons
-      const sps = [...new Set((res.data.data || []).map(d => d.salesperson_name).filter(Boolean))];
-      if (sps.length) setSalespersons(sps);
-    } catch (e) { console.error(e); }
+      // Extract salesperson names for filter dropdown
+      if (activeTab === 'salespersonwise') {
+        setSalespersons(rows.map(r => r.salesperson_name || r.salesperson_label).filter(Boolean));
+      }
+    } catch(e) { console.error(e); }
     finally { setLoading(false); }
   }
 
   function setFilter(key, val) { setFilters(f => ({...f, [key]: val})); }
 
   function resetFilters() {
-    setFilters({ from: firstOfMonth, to: today, year: new Date().getFullYear(),
-      customer_id: '', brand: '', status: '', salesperson: '', amount_min: '', amount_max: '' });
+    setFilters({
+      from: firstOfMonth, to: today,
+      year: new Date().getFullYear(),
+      customer_id: '', brand: '', status: '', salesperson: '',
+      amount_min: '', amount_max: '',
+    });
   }
 
   function fmt(n) {
@@ -113,9 +118,106 @@ export default function ReportsPage() {
   }
 
   const activeFilterCount = [
-    filters.customer_id, filters.brand, filters.status, filters.salesperson,
-    filters.amount_min, filters.amount_max
+    filters.customer_id, filters.brand, filters.status,
+    filters.salesperson, filters.amount_min, filters.amount_max,
   ].filter(Boolean).length;
+
+  // ---- Salesperson expandable card renderer ----
+  function SalespersonCards() {
+    return (
+      <div className="space-y-3">
+        {data.map((row, i) => {
+          const name  = row.salesperson_name || row.salesperson_label || 'Unassigned';
+          const open  = expanded[name] || false;
+          const pis   = row.pis || [];
+          return (
+            <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <button
+                className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
+                onClick={() => setExpanded(e => ({...e, [name]: !open}))}>
+                <div className="flex items-center gap-4">
+                  <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">
+                    {name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="text-left">
+                    <p className="font-semibold text-gray-900 text-sm">{name}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{row.total_pi} PIs</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-6">
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">Total Value</p>
+                    <p className="font-bold text-blue-700 text-sm">Rs.{fmt(row.total_value)}</p>
+                  </div>
+                  {row.approved_value > 0 && (
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">Approved</p>
+                      <p className="font-semibold text-green-700 text-sm">Rs.{fmt(row.approved_value)}</p>
+                    </div>
+                  )}
+                  {row.pending_value > 0 && (
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">Pending</p>
+                      <p className="font-semibold text-orange-600 text-sm">Rs.{fmt(row.pending_value)}</p>
+                    </div>
+                  )}
+                  <span className="text-gray-400 text-sm">{open ? '▲' : '▼'}</span>
+                </div>
+              </button>
+              {open && pis.length > 0 && (
+                <div className="border-t border-gray-100">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">PI Number</th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Customer</th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Brand</th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Date</th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Status</th>
+                        <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {pis.map((pi, j) => (
+                        <tr key={j} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 text-xs font-mono font-bold text-blue-700">{pi.pi_number}</td>
+                          <td className="px-4 py-2 text-xs text-gray-700">{pi.customer?.company_name || '-'}</td>
+                          <td className="px-4 py-2 text-xs capitalize text-gray-600">{pi.brand}</td>
+                          <td className="px-4 py-2 text-xs text-gray-500">{new Date(pi.created_at).toLocaleDateString('en-IN')}</td>
+                          <td className="px-4 py-2">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[pi.status] || 'bg-gray-100 text-gray-600'}`}>
+                              {pi.status?.replace(/_/g,' ')}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-xs font-semibold text-right text-gray-900">Rs.{fmt(pi.grand_total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-gray-50 border-t border-gray-200">
+                        <td colSpan={5} className="px-4 py-2 text-xs font-bold text-gray-700">Subtotal</td>
+                        <td className="px-4 py-2 text-xs font-bold text-right text-blue-700">
+                          Rs.{fmt(pis.reduce((s, p) => s + parseFloat(p.grand_total || 0), 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+              {open && pis.length === 0 && (
+                <div className="px-5 py-4 text-sm text-gray-400 border-t border-gray-100">No PI details available.</div>
+              )}
+            </div>
+          );
+        })}
+        {/* Grand total */}
+        <div className="bg-white rounded-xl border border-gray-200 px-5 py-3 flex justify-between items-center">
+          <span className="font-bold text-gray-700">Grand Total</span>
+          <span className="font-bold text-blue-700 text-base">Rs.{fmt(data.reduce((s, r) => s + parseFloat(r.total_value || 0), 0))}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -126,7 +228,7 @@ export default function ReportsPage() {
         </div>
         <button onClick={() => window.print()}
           className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium">
-          🖨️ Print
+          Print
         </button>
       </div>
 
@@ -139,7 +241,7 @@ export default function ReportsPage() {
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'bg-white text-gray-600 border border-gray-300 hover:border-blue-400'
             }`}>
-            {tab.icon} {tab.label}
+            {tab.label}
           </button>
         ))}
       </div>
@@ -147,7 +249,6 @@ export default function ReportsPage() {
       {/* Filter Bar */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
         <div className="flex gap-3 items-end flex-wrap">
-          {/* Date filters */}
           {activeTab === 'monthly' ? (
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Year</label>
@@ -172,40 +273,34 @@ export default function ReportsPage() {
             </>
           )}
 
-          {/* Customer filter */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">👤 Customer</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Customer</label>
             <select value={filters.customer_id} onChange={e => setFilter('customer_id', e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-44">
               <option value="">All Customers</option>
-              {customers.map(c => (
-                <option key={c.id} value={c.id}>{c.company_name}</option>
-              ))}
+              {customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
             </select>
           </div>
 
-          {/* Brand filter */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">🏷️ Brand</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Brand</label>
             <select value={filters.brand} onChange={e => setFilter('brand', e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-36">
               {BRAND_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
             </select>
           </div>
 
-          {/* Status filter */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">📊 Status</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
             <select value={filters.status} onChange={e => setFilter('status', e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-44">
               {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
 
-          {/* More filters toggle */}
           <button onClick={() => setShowFilters(!showFilters)}
             className={`px-3 py-2 text-sm rounded-lg border font-medium ${showFilters ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-300 text-gray-600'}`}>
-            ⚙️ More {activeFilterCount > 0 && <span className="ml-1 bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full">{activeFilterCount}</span>}
+            More {activeFilterCount > 0 && <span className="ml-1 bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full">{activeFilterCount}</span>}
           </button>
 
           <button onClick={fetchReport}
@@ -214,36 +309,32 @@ export default function ReportsPage() {
           </button>
 
           {activeFilterCount > 0 && (
-            <button onClick={resetFilters}
+            <button onClick={() => { resetFilters(); }}
               className="text-sm text-red-500 hover:text-red-700 font-medium">
-              ✕ Reset
+              Reset
             </button>
           )}
         </div>
 
-        {/* Extended filters */}
         {showFilters && (
           <div className="mt-3 pt-3 border-t border-gray-100 flex gap-3 flex-wrap items-end">
-            {/* Salesperson filter */}
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">👔 Salesperson</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Salesperson</label>
               <select value={filters.salesperson} onChange={e => setFilter('salesperson', e.target.value)}
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-40">
                 <option value="">All</option>
                 {salespersons.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-
-            {/* Amount range */}
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">💰 Amount Min (Rs.)</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Amount Min (Rs.)</label>
               <input type="number" value={filters.amount_min} onChange={e => setFilter('amount_min', e.target.value)}
                 placeholder="0"
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">💰 Amount Max (Rs.)</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Amount Max (Rs.)</label>
               <input type="number" value={filters.amount_max} onChange={e => setFilter('amount_max', e.target.value)}
                 placeholder="99999999"
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -307,14 +398,15 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* Data Table */}
+      {/* Data */}
       {loading ? (
         <div className="text-center py-12 text-gray-400">Loading...</div>
       ) : data.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-xl border border-gray-200 text-gray-400">
-          <p className="text-4xl mb-3">📊</p>
           <p>Koi data nahi mila</p>
         </div>
+      ) : activeTab === 'salespersonwise' ? (
+        <SalespersonCards />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
@@ -338,7 +430,7 @@ export default function ReportsPage() {
                   </>}
                   {activeTab === 'productwise' && <>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Product</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Total Qty</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Total Length</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Total Value</th>
                   </>}
                   {activeTab === 'monthly' && <>
@@ -362,14 +454,10 @@ export default function ReportsPage() {
                   {activeTab === 'dispatch' && <>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">PI Number</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Customer</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Dispatch Date</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Transport</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Amount</th>
-                  </>}
-                  {activeTab === 'salespersonwise' && <>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Salesperson</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Total PIs</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Total Value</th>
                   </>}
                 </tr>
               </thead>
@@ -425,19 +513,18 @@ export default function ReportsPage() {
                     {activeTab === 'dispatch' && <>
                       <td className="px-4 py-3 text-sm font-mono font-bold text-blue-700">{row.pi_number}</td>
                       <td className="px-4 py-3 text-sm text-gray-900">{row.customer_name}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[row.status] || 'bg-gray-100 text-gray-600'}`}>
+                          {row.status?.replace(/_/g,' ')}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{row.dispatched_at ? new Date(row.dispatched_at).toLocaleDateString('en-IN') : '-'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{row.transport_company || row.vehicle_number || '-'}</td>
                       <td className="px-4 py-3 text-sm font-semibold text-right text-gray-900">Rs.{fmt(row.grand_total)}</td>
                     </>}
-                    {activeTab === 'salespersonwise' && <>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{row.salesperson_name || 'Unknown'}</td>
-                      <td className="px-4 py-3 text-sm text-right text-gray-700">{row.total_pi}</td>
-                      <td className="px-4 py-3 text-sm font-semibold text-right text-blue-700">Rs.{fmt(row.total_value)}</td>
-                    </>}
                   </tr>
                 ))}
               </tbody>
-              {/* Total Row */}
               <tfoot>
                 <tr className="bg-gray-50 border-t-2 border-gray-200">
                   {activeTab === 'datewise' && <>
@@ -446,10 +533,26 @@ export default function ReportsPage() {
                       Rs.{fmt(data.reduce((s, r) => s + parseFloat(r.amount || 0), 0))}
                     </td>
                   </>}
-                  {['customerwise','productwise','monthly','salespersonwise'].includes(activeTab) && <>
+                  {['customerwise','monthly'].includes(activeTab) && <>
                     <td className="px-4 py-3 text-sm font-bold text-gray-700">Total</td>
                     <td className="px-4 py-3 text-sm font-bold text-right text-gray-700">
-                      {data.reduce((s, r) => s + parseInt(r.total_pi || r.total_qty || 0), 0)}
+                      {data.reduce((s, r) => s + parseInt(r.total_pi || 0), 0)}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-bold text-right text-blue-700">
+                      Rs.{fmt(data.reduce((s, r) => s + parseFloat(r.total_value || 0), 0))}
+                    </td>
+                  </>}
+                  {activeTab === 'productwise' && <>
+                    <td className="px-4 py-3 text-sm font-bold text-gray-700">Total</td>
+                    <td className="px-4 py-3 text-sm font-bold text-right text-gray-700">-</td>
+                    <td className="px-4 py-3 text-sm font-bold text-right text-blue-700">
+                      Rs.{fmt(data.reduce((s, r) => s + parseFloat(r.total_value || 0), 0))}
+                    </td>
+                  </>}
+                  {activeTab === 'statuswise' && <>
+                    <td className="px-4 py-3 text-sm font-bold text-gray-700">Total</td>
+                    <td className="px-4 py-3 text-sm font-bold text-right text-gray-700">
+                      {data.reduce((s, r) => s + parseInt(r.count || 0), 0)}
                     </td>
                     <td className="px-4 py-3 text-sm font-bold text-right text-blue-700">
                       Rs.{fmt(data.reduce((s, r) => s + parseFloat(r.total_value || 0), 0))}
@@ -468,7 +571,7 @@ export default function ReportsPage() {
                     </td>
                   </>}
                   {activeTab === 'dispatch' && <>
-                    <td colSpan={4} className="px-4 py-3 text-sm font-bold text-gray-700">Total</td>
+                    <td colSpan={5} className="px-4 py-3 text-sm font-bold text-gray-700">Total</td>
                     <td className="px-4 py-3 text-sm font-bold text-right text-blue-700">
                       Rs.{fmt(data.reduce((s, r) => s + parseFloat(r.grand_total || 0), 0))}
                     </td>
