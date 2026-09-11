@@ -48,6 +48,8 @@ export default function PIPage() {
   const EMPTY_FORM = {
     customer_id: '', brand: defaultBrand,
     transport_charge: '0', insurance_charge: '0', insurance_pct: '0',
+    white_discount_pct: '0', color_discount_pct: '0', hardware_discount_pct: '0',
+    cd_discount_pct: '0',
     discount_pct: '0', remarks: '',
     salesperson_name: '',
     color_name: '',
@@ -118,6 +120,10 @@ export default function PIPage() {
       received_in:      pi.received_in || '',
       payment_note:     pi.payment_note || '',
       color_name:       pi.color_name || '',
+      white_discount_pct:    pi.white_discount_pct || '0',
+      color_discount_pct:    pi.color_discount_pct || '0',
+      hardware_discount_pct: pi.hardware_discount_pct || '0',
+      cd_discount_pct:       pi.cd_discount_pct || '0',
     });
     try {
       const res = await api.get(`/pi/${pi.id}`);
@@ -152,12 +158,14 @@ export default function PIPage() {
     if (isPlastrong) {
       setItems([...items, { item_type: 'profile', product_id: '', total_pieces: '', total_weight: '', unit_rate: '' }]);
     } else {
-      setItems([...items, { item_type: 'profile', profile_type: profileType, product_id: '', bundle_qty_ordered: 1, total_pieces: 1, color_name: '' }]);
+      const discPct = profileType === 'white' ? form.white_discount_pct : form.color_discount_pct;
+      const lastColorName = profileType === 'color' ? (items.filter(i => i.item_type === 'profile' && i.profile_type === 'color').slice(-1)[0]?.color_name || '') : '';
+      setItems([...items, { item_type: 'profile', profile_type: profileType, product_id: '', bundle_qty_ordered: 1, total_pieces: 1, color_name: lastColorName, discount_pct: discPct }]);
     }
   }
 
   function addHardwareItem() {
-    setItems([...items, { item_type: 'hardware', hardware_product_id: '', quantity: 1 }]);
+    setItems([...items, { item_type: 'hardware', hardware_product_id: '', quantity: 1, discount_pct: form.hardware_discount_pct }]);
   }
 
   function removeItem(index) { setItems(items.filter((_, i) => i !== index)); }
@@ -194,7 +202,7 @@ export default function PIPage() {
       totalLength = totalPieces * p.profile_length;
     }
     const totalWeight = totalLength * (p.weight_per_meter || 0);
-    const discountPct = parseFloat(form.discount_pct) || 0;
+    const discountPct = parseFloat(item.discount_pct ?? form.white_discount_pct) || 0;
     const netRate     = rate * (1 - discountPct / 100);
     const lineTotal   = Math.round(totalLength * netRate * 100) / 100;
     return { totalLength, totalPieces, bundleQty, lineTotal, rate, netRate, totalWeight };
@@ -209,8 +217,10 @@ export default function PIPage() {
   function calcHardwareLine(item) {
     const h = getHardware(item.hardware_product_id);
     if (!h) return { lineTotal: 0, rate: 0 };
-    const qty  = parseFloat(item.quantity) || 0;
-    return { lineTotal: qty * h.rate, rate: h.rate, unit: h.unit };
+    const qty         = parseFloat(item.quantity) || 0;
+    const discountPct = parseFloat(item.discount_pct ?? form.hardware_discount_pct) || 0;
+    const netRate     = h.rate * (1 - discountPct / 100);
+    return { lineTotal: Math.round(qty * netRate * 100) / 100, rate: h.rate, netRate, unit: h.unit };
   }
 
   function calcTotals() {
@@ -226,14 +236,17 @@ export default function PIPage() {
     });
     const transport     = parseFloat(form.transport_charge) || 0;
     const insurancePct  = parseFloat(form.insurance_pct) || 0;
-    const discountPct   = parseFloat(form.discount_pct) || 0;
-    const discountAmt   = 0; // Already applied per item
-    const afterDiscount = subtotal; // Already discounted
+    const cdDiscountPct = parseFloat(form.cd_discount_pct) || 0;
+    const discountPct   = 0;
+    const discountAmt   = 0;
+    const afterDiscount = subtotal;
     const insurance     = Math.round(afterDiscount * insurancePct / 100 * 100) / 100;
     const taxable       = afterDiscount + transport + insurance;
     const gst           = Math.round(taxable * 0.18 * 100) / 100;
-    const grand         = Math.round((taxable + gst) * 100) / 100;
-    return { subtotal, discountPct, discountAmt, afterDiscount, transport, insurance, insurancePct, gst, grand };
+    const beforeCd      = Math.round((taxable + gst) * 100) / 100;
+    const cdDiscountAmt = Math.round(beforeCd * cdDiscountPct / 100 * 100) / 100;
+    const grand         = Math.round((beforeCd - cdDiscountAmt) * 100) / 100;
+    return { subtotal, discountPct, discountAmt, afterDiscount, transport, insurance, insurancePct, cdDiscountPct, cdDiscountAmt, gst, beforeCd, grand };
   }
 
   async function handleSubmit() {
@@ -244,6 +257,10 @@ export default function PIPage() {
       const payload = {
         ...form,
         profile_type: 'white',
+        white_discount_pct:    parseFloat(form.white_discount_pct) || 0,
+        color_discount_pct:    parseFloat(form.color_discount_pct) || 0,
+        hardware_discount_pct: parseFloat(form.hardware_discount_pct) || 0,
+        cd_discount_pct:       parseFloat(form.cd_discount_pct) || 0,
         items: items.map(item => {
           if (item.item_type === 'hardware') {
             const h = getHardware(item.hardware_product_id);
@@ -252,6 +269,7 @@ export default function PIPage() {
               hardware_product_id: item.hardware_product_id,
               quantity:            parseFloat(item.quantity) || 0,
               unit_rate:           h?.rate || 0,
+              discount_pct:        parseFloat(item.discount_pct) || 0,
             };
           } else if (isPlastrong) {
             return {
@@ -781,11 +799,46 @@ export default function PIPage() {
                       )}
                     </div>
                   </div>
+                  <div className="col-span-2">
+                    <p className="text-xs font-semibold text-gray-700 mb-2">📉 Discount % (Har item rate pe lagega)</p>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">⬜ White Discount %</label>
+                        <input type="number" min="0" max="100" step="0.01" value={form.white_discount_pct}
+                          onChange={e => {
+                            setForm({...form, white_discount_pct: e.target.value});
+                            setItems(items.map(i => i.item_type === 'profile' && i.profile_type === 'white' ? {...i, discount_pct: e.target.value} : i));
+                          }}
+                          className="w-full border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">🎨 Color Discount %</label>
+                        <input type="number" min="0" max="100" step="0.01" value={form.color_discount_pct}
+                          onChange={e => {
+                            setForm({...form, color_discount_pct: e.target.value});
+                            setItems(items.map(i => i.item_type === 'profile' && i.profile_type === 'color' ? {...i, discount_pct: e.target.value} : i));
+                          }}
+                          className="w-full border border-orange-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">🔧 Hardware Discount %</label>
+                        <input type="number" min="0" max="100" step="0.01" value={form.hardware_discount_pct}
+                          onChange={e => {
+                            setForm({...form, hardware_discount_pct: e.target.value});
+                            setItems(items.map(i => i.item_type === 'hardware' ? {...i, discount_pct: e.target.value} : i));
+                          }}
+                          className="w-full border border-green-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                        />
+                      </div>
+                    </div>
+                  </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Discount % <span className="text-green-600">(Har item rate pe lagega)</span></label>
-                    <input type="number" min="0" max="100" step="0.01" value={form.discount_pct}
-                      onChange={e => setForm({...form, discount_pct: e.target.value})}
-                      className="w-full border border-green-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                    <label className="block text-xs font-medium text-gray-700 mb-1">💵 CD Discount % <span className="text-gray-400">(Grand Total ke baad)</span></label>
+                    <input type="number" min="0" max="100" step="0.01" value={form.cd_discount_pct}
+                      onChange={e => setForm({...form, cd_discount_pct: e.target.value})}
+                      className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
                     />
                   </div>
                   <div>
@@ -863,6 +916,15 @@ export default function PIPage() {
                     <span>GST 18%</span><span>Rs.{totals.gst.toFixed(2)}</span>
                   </div>
                   <div className="border-t border-gray-200 pt-2 flex justify-between text-sm font-semibold text-gray-900">
+                    <span>Total (before CD)</span><span>Rs.{totals.beforeCd.toFixed(2)}</span>
+                  </div>
+                  {totals.cdDiscountPct > 0 && (
+                    <div className="flex justify-between text-sm text-purple-600 font-medium">
+                      <span>CD Discount ({totals.cdDiscountPct}%)</span>
+                      <span>- Rs.{totals.cdDiscountAmt.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="border-t border-gray-200 pt-2 flex justify-between text-base font-bold text-gray-900">
                     <span>Grand Total</span><span>Rs.{totals.grand.toFixed(2)}</span>
                   </div>
                 </div>
