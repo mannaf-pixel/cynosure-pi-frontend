@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Cookies from 'js-cookie';
 import api, { API_BASE } from '@/lib/api';
 import Cookies from 'js-cookie';
 import { getCompany, getPricingMode } from '@/lib/auth';
@@ -56,6 +57,7 @@ export default function PIPage() {
     actual_amount: '', payment_mode: '', received_in: '', payment_note: '',
   };
 
+  const [user, setUser] = useState(null);
   const [pis, setPis] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -72,7 +74,11 @@ export default function PIPage() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { fetchPIs(); }, []);
+  useEffect(() => {
+    const u = Cookies.get('cynosure_user');
+    if (u) { try { setUser(JSON.parse(u)); } catch(e) {} }
+    fetchPIs();
+  }, []);
 
   async function fetchPIs() {
     setLoading(true);
