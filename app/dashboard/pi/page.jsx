@@ -209,7 +209,8 @@ export default function PIPage() {
     const totalWeight = totalLength * (p.weight_per_meter || 0);
     const discountPct = parseFloat(item.discount_pct ?? form.white_discount_pct) || 0;
     const netRate     = Math.round(rate * (1 - discountPct / 100));
-    const lineTotal   = Math.round(totalLength * netRate * 100) / 100;
+    const exactNetRate = rate * (1 - discountPct / 100);
+    const lineTotal   = Math.round(totalLength * exactNetRate * 100) / 100;
     return { totalLength, totalPieces, bundleQty, lineTotal, rate, netRate, totalWeight };
   }
 
