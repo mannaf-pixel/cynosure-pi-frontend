@@ -401,7 +401,7 @@ export default function PIPage() {
           <h2 className="text-xl font-semibold text-gray-900">Proforma Invoices</h2>
           <p className="text-sm text-gray-500 mt-0.5">{pis.length} total PIs</p>
         </div>
-        <button onClick={openCreate}
+        <button onClick={() => openCreate()}
           className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
           + Create PI
         </button>
@@ -721,7 +721,7 @@ export default function PIPage() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-gray-700">🔧 Hardware & Accessories</span>
-                  <button onClick={addHardwareItem}
+                  <button onClick={() => addHardwareItem()}
                     className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-1.5 rounded-lg font-medium">
                     + Add Hardware
                   </button>
