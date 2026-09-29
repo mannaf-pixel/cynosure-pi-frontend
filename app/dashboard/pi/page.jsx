@@ -246,13 +246,15 @@ export default function PIPage() {
     const discountPct   = 0;
     const discountAmt   = 0;
     const afterDiscount = subtotal;
-    const insurance     = Math.round(afterDiscount * insurancePct / 100 * 100) / 100;
-    const taxable       = afterDiscount + transport + insurance;
+
+    // Sahi order: Subtotal → CD Discount → Insurance → Transport → GST
+    const cdDiscountAmt = Math.round(afterDiscount * cdDiscountPct / 100 * 100) / 100;
+    const afterCd       = afterDiscount - cdDiscountAmt;
+    const insurance     = Math.round(afterCd * insurancePct / 100 * 100) / 100;
+    const taxable       = afterCd + transport + insurance;
     const gst           = Math.round(taxable * 0.18 * 100) / 100;
-    const beforeCd      = Math.round((taxable + gst) * 100) / 100;
-    const cdDiscountAmt = Math.round(beforeCd * cdDiscountPct / 100 * 100) / 100;
-    const grand         = Math.round((beforeCd - cdDiscountAmt) * 100) / 100;
-    return { subtotal, discountPct, discountAmt, afterDiscount, transport, insurance, insurancePct, cdDiscountPct, cdDiscountAmt, gst, beforeCd, grand };
+    const grand         = Math.round((taxable + gst) * 100) / 100;
+    return { subtotal, discountPct, discountAmt, afterDiscount, transport, insurance, insurancePct, cdDiscountPct, cdDiscountAmt, afterCd, gst, grand };
   }
 
   async function handleSubmit() {
@@ -909,9 +911,21 @@ export default function PIPage() {
                     <span>Rs.{items.filter(i=>i.item_type==='hardware').reduce((s,item)=> s + calcHardwareLine(item).lineTotal, 0).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-sm text-gray-600 border-t border-gray-200 pt-1">
-                    <span>Subtotal {totals.discountPct > 0 ? `(after ${totals.discountPct}% disc.)` : ''}</span>
+                    <span>Subtotal</span>
                     <span>Rs.{totals.subtotal.toFixed(2)}</span>
                   </div>
+                  {totals.cdDiscountPct > 0 && (
+                    <div className="flex justify-between text-sm text-purple-600 font-medium">
+                      <span>CD Discount ({totals.cdDiscountPct}%)</span>
+                      <span>- Rs.{totals.cdDiscountAmt.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {totals.cdDiscountPct > 0 && (
+                    <div className="flex justify-between text-sm text-gray-600">
+                      <span>After CD</span>
+                      <span>Rs.{totals.afterCd.toFixed(2)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm text-gray-600">
                     <span>Transport</span><span>Rs.{totals.transport.toFixed(2)}</span>
                   </div>
@@ -924,12 +938,6 @@ export default function PIPage() {
                   <div className="border-t border-gray-200 pt-2 flex justify-between text-sm font-semibold text-gray-900">
                     <span>Total (before CD)</span><span>Rs.{totals.beforeCd.toFixed(2)}</span>
                   </div>
-                  {totals.cdDiscountPct > 0 && (
-                    <div className="flex justify-between text-sm text-purple-600 font-medium">
-                      <span>CD Discount ({totals.cdDiscountPct}%)</span>
-                      <span>- Rs.{totals.cdDiscountAmt.toFixed(2)}</span>
-                    </div>
-                  )}
                   <div className="border-t border-gray-200 pt-2 flex justify-between text-base font-bold text-gray-900">
                     <span>Grand Total</span><span>Rs.{totals.grand.toFixed(2)}</span>
                   </div>
