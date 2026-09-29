@@ -253,7 +253,21 @@ export default function PIPage() {
     const taxable       = afterCd + transport + insurance;
     const gst           = Math.round(taxable * 0.18 * 100) / 100;
     const grand         = Math.round((taxable + gst) * 100) / 100;
-    return { subtotal, discountPct, discountAmt, afterDiscount, transport, insurance, insurancePct, cdDiscountPct, cdDiscountAmt, afterCd, gst, grand };
+    return { 
+      subtotal:       subtotal || 0, 
+      discountPct:    discountPct || 0, 
+      discountAmt:    discountAmt || 0, 
+      afterDiscount:  afterDiscount || 0, 
+      transport:      transport || 0, 
+      insurance:      insurance || 0, 
+      insurancePct:   insurancePct || 0, 
+      cdDiscountPct:  cdDiscountPct || 0, 
+      cdDiscountAmt:  cdDiscountAmt || 0, 
+      afterCd:        afterCd || 0, 
+      gst:            gst || 0, 
+      grand:          grand || 0,
+      beforeCd:       (afterCd || 0),
+    };
   }
 
   async function handleSubmit() {
