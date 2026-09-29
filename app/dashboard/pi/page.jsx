@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react';
 import Cookies from 'js-cookie';
 import api, { API_BASE } from '@/lib/api';
-import Cookies from 'js-cookie';
 import { getCompany, getPricingMode } from '@/lib/auth';
 
 const STATUS_COLORS = {
