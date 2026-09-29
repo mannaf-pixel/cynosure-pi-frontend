@@ -1,12 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
-import api from '@/lib/api';
+import api, { API_BASE } from '@/lib/api';
 import Cookies from 'js-cookie';
 
 export default function DispatchPage() {
   const [pis, setPis] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('payment_confirmed');
+  const token = Cookies.get('cynosure_token') || '';
   const [dispatchModal, setDispatchModal] = useState(null);
   const [form, setForm] = useState({
     transport_company: '', vehicle_number: '', driver_name: '',
@@ -176,6 +177,18 @@ export default function DispatchPage() {
                   <p className="text-xl font-bold text-gray-900">Rs.{fmt(pi.grand_total)}</p>
                   <p className="text-xs text-gray-500 mt-0.5">Grand Total</p>
                   <p className="text-xs text-gray-400 mt-1">{new Date(pi.created_at).toLocaleDateString('en-IN')}</p>
+                  <div className="flex gap-2 mt-2 justify-end">
+                    <a href={`${API_BASE}/api/v1/pi/${pi.id}/pdf?token=${token}`}
+                      target="_blank" rel="noreferrer"
+                      className="text-xs px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded border border-blue-200 font-medium">
+                      Customer PDF
+                    </a>
+                    <a href={`${API_BASE}/api/v1/pi/${pi.id}/pdf?internal=1&token=${token}`}
+                      target="_blank" rel="noreferrer"
+                      className="text-xs px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded border border-purple-200 font-medium">
+                      Internal PDF
+                    </a>
+                  </div>
                 </div>
               </div>
 
